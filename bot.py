@@ -76,7 +76,7 @@ async def on_message(message: discord.Message):
         elif tipo == "lembrete":
             destino_lembretes = canal(message.guild, CANAL_LEMBRETES)
             canal_id = str(destino_lembretes.id) if destino_lembretes else str(message.channel.id)
-            criar_lembrete(acao["titulo"], acao["disparar_em"], canal_id)
+            criar_lembrete(acao["titulo"], acao["disparar_em"], canal_id, str(message.author.id))
             await message.channel.send(
                 f"⏰ Combinado! Vou te lembrar em **{acao['disparar_em']}**: {acao['titulo']}"
             )
@@ -105,7 +105,8 @@ async def loop_lembretes():
             for lembrete in lembretes_pendentes():
                 canal_obj = client.get_channel(int(lembrete["discord_channel_id"]))
                 if canal_obj:
-                    await canal_obj.send(f"⏰ **LEMBRETE**\n{lembrete['titulo']}")
+                    mencao = f"<@{lembrete['discord_user_id']}> " if lembrete.get("discord_user_id") else ""
+                    await canal_obj.send(f"⏰ {mencao}**LEMBRETE**\n{lembrete['titulo']}")
                 marcar_lembrete_enviado(lembrete["id"])
         except Exception:
             log.exception("erro no loop de lembretes")

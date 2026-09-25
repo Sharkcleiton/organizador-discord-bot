@@ -14,11 +14,12 @@ def criar_tarefa(titulo: str, descricao: str | None = None, prazo: str | None = 
     }).execute()
 
 
-def criar_lembrete(titulo: str, disparar_em: str, discord_channel_id: str):
+def criar_lembrete(titulo: str, disparar_em: str, discord_channel_id: str, discord_user_id: str):
     _client.table("lembretes").insert({
         "titulo": titulo,
         "disparar_em": disparar_em,
         "discord_channel_id": discord_channel_id,
+        "discord_user_id": discord_user_id,
     }).execute()
 
 
