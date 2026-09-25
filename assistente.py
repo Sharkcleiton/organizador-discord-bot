@@ -2,9 +2,10 @@ import os
 import json
 from datetime import datetime
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+_cliente = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 MODELO = "gemini-2.5-flash-lite"
 
@@ -39,10 +40,10 @@ async def processar_mensagem(texto: str, pendente: dict | None = None) -> dict:
     )
     prompt = f"{INSTRUCOES}\n\nData/hora atual: {agora}{contexto}\n\nMensagem do usuário: {texto}"
 
-    modelo = genai.GenerativeModel(MODELO)
-    resposta = await modelo.generate_content_async(
-        prompt,
-        generation_config={"response_mime_type": "application/json"},
+    resposta = await _cliente.aio.models.generate_content(
+        model=MODELO,
+        contents=prompt,
+        config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
 
     try:

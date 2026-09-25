@@ -2,8 +2,11 @@ import os
 import asyncio
 import logging
 
-import discord
 from dotenv import load_dotenv
+
+load_dotenv()
+
+import discord
 
 from assistente import processar_mensagem
 from db import (
@@ -13,8 +16,6 @@ from db import (
     lembretes_pendentes,
     marcar_lembrete_enviado,
 )
-
-load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("organizador")
