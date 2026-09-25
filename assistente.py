@@ -7,7 +7,7 @@ from google.genai import types
 
 _cliente = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-MODELO = "gemini-2.5-flash-lite"
+MODELO = "gemini-3.5-flash-lite"
 
 INSTRUCOES = """Você é o assistente organizador pessoal do usuário, dentro de um canal do Discord.
 Sua função é ler a mensagem dele e decidir o que fazer, respondendo SEMPRE em JSON puro, sem markdown, no formato:

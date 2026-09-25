@@ -52,7 +52,12 @@ async def on_message(message: discord.Message):
         return
 
     pendente = pendentes.get(message.channel.id)
-    resultado = await processar_mensagem(message.content, pendente=pendente)
+    try:
+        resultado = await processar_mensagem(message.content, pendente=pendente)
+    except Exception:
+        log.exception("erro ao processar mensagem")
+        await message.channel.send("⚠️ Deu um erro aqui do meu lado processando isso — tenta de novo em instantes.")
+        return
     pendentes.pop(message.channel.id, None)
 
     for acao in resultado.get("acoes", []):
