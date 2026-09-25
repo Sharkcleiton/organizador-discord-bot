@@ -74,6 +74,9 @@ NOME_CATEGORIA = {
 }
 CATEGORIAS_BUSCA = list(NOME_CATEGORIA.keys())
 
+HORARIO_PAINEL_DIARIO = "10:00"
+ultimo_painel_diario: dict[int, str] = {}  # guild_id -> data (YYYY-MM-DD) do último envio
+
 DIAS_NOMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 
 HORAS_ANTES_DE_COBRAR = 3
@@ -131,6 +134,7 @@ async def on_ready():
     client.loop.create_task(loop_cobranca())
     client.loop.create_task(loop_contas())
     client.loop.create_task(loop_financeiro())
+    client.loop.create_task(loop_painel_diario())
 
 
 @client.event
@@ -405,6 +409,25 @@ async def checar_ritmo_gastos(channel: discord.TextChannel, autor: discord.Membe
             f"{autor.mention} {aviso} (já gastou R$ {total:.2f} de R$ {limite:.2f} esse mês)"
         )
         marcar_avisado_hoje(hoje_str)
+
+
+async def loop_painel_diario():
+    await client.wait_until_ready()
+    while not client.is_closed():
+        try:
+            agora_local = datetime.now(FUSO)
+            hoje_str = agora_local.date().isoformat()
+            if agora_local.strftime("%H:%M") == HORARIO_PAINEL_DIARIO:
+                for guild in client.guilds:
+                    if ultimo_painel_diario.get(guild.id) == hoje_str:
+                        continue
+                    destino = canal(guild, CANAL_GERAL)
+                    if destino:
+                        await destino.send(content="\U0001F4C5 Painel do dia:", embed=montar_painel())
+                    ultimo_painel_diario[guild.id] = hoje_str
+        except Exception:
+            log.exception("erro no loop do painel diario")
+        await asyncio.sleep(60)
 
 
 async def loop_lembretes():
