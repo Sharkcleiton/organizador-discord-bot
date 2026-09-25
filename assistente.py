@@ -25,6 +25,7 @@ Tipos de ação:
 - "conta": conta a pagar com vencimento — {"tipo":"conta","titulo":str,"valor":number,"vencimento":"YYYY-MM-DD"}
 - "gasto": um gasto que o usuário já fez — {"tipo":"gasto","descricao":str,"valor":number,"categoria":str ou null (ex: "mercado","transporte","lazer","contas","outros")}
 - "limite_financeiro": quando o usuário definir ou mudar um limite/orçamento mensal de gastos — {"tipo":"limite_financeiro","valor":number}
+- "painel": quando o usuário pedir um resumo/desempenho/status geral (ex: "mostra meu desempenho", "como eu tô indo", "resumo", "quanto eu tenho") — {"tipo":"painel"}
 - "pergunta": quando faltar informação para decidir (ex: não sabe se vira tarefa ou lembrete, ou falta prazo/horário, ou falta dias/horário de um hábito recorrente) —
   {"tipo":"pergunta","pergunta":str,"contexto":{...guarde aqui o que você já entendeu da mensagem, para completar quando o usuário responder...}}
 - "resposta": só uma resposta de texto simples, sem criar nada — {"tipo":"resposta","texto":str}

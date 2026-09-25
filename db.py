@@ -161,3 +161,47 @@ def obter_config_financeiro() -> dict | None:
 
 def marcar_avisado_hoje(data_str: str):
     _client.table("config_financeiro").update({"avisado_em": data_str}).eq("id", True).execute()
+
+
+def contar_tarefas() -> tuple[int, int]:
+    pendentes = _client.table("tarefas").select("id", count="exact").eq("status", "pendente").execute().count
+    concluidas = _client.table("tarefas").select("id", count="exact").eq("status", "concluida").execute().count
+    return pendentes or 0, concluidas or 0
+
+
+def contar_metas() -> tuple[int, int]:
+    ativas = _client.table("metas").select("id", count="exact").eq("status", "ativa").execute().count
+    concluidas = _client.table("metas").select("id", count="exact").eq("status", "concluida").execute().count
+    return ativas or 0, concluidas or 0
+
+
+def contar_habitos_recentes(dias: int = 30) -> tuple[int, int]:
+    limite = (datetime.now(timezone.utc) - timedelta(days=dias)).date().isoformat()
+    feitos = (
+        _client.table("execucoes_habito")
+        .select("id", count="exact")
+        .eq("status", "feito")
+        .gte("data", limite)
+        .execute()
+        .count
+    )
+    perdidos = (
+        _client.table("execucoes_habito")
+        .select("id", count="exact")
+        .eq("status", "nao_feito")
+        .gte("data", limite)
+        .execute()
+        .count
+    )
+    return feitos or 0, perdidos or 0
+
+
+def contar_lembretes_pendentes() -> int:
+    resposta = _client.table("lembretes").select("id", count="exact").eq("enviado", False).execute()
+    return resposta.count or 0
+
+
+def contas_pendentes_resumo() -> tuple[int, float]:
+    resposta = _client.table("contas").select("valor").eq("pago", False).execute()
+    total = sum(float(r["valor"]) for r in resposta.data)
+    return len(resposta.data), total

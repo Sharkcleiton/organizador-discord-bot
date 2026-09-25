@@ -33,6 +33,11 @@ from db import (
     definir_limite_financeiro,
     obter_config_financeiro,
     marcar_avisado_hoje,
+    contar_tarefas,
+    contar_metas,
+    contar_habitos_recentes,
+    contar_lembretes_pendentes,
+    contas_pendentes_resumo,
 )
 import calendar
 
@@ -45,6 +50,8 @@ CANAL_ASSISTENTE = "assistente"
 CANAL_TAREFAS = "tarefas"
 CANAL_LEMBRETES = "lembretes"
 CANAL_METAS = "metas"
+CANAL_CONTAS = "contas"
+CANAL_GERAL = "geral"
 
 DIAS_ANTES_DE_LEMBRAR_CONTA = 3
 
@@ -100,6 +107,13 @@ def deve_dizer_chefe(channel_id: int) -> bool:
 @client.event
 async def on_ready():
     log.info("Conectado como %s", client.user)
+    for guild in client.guilds:
+        if canal(guild, CANAL_CONTAS) is None:
+            try:
+                await guild.create_text_channel(CANAL_CONTAS)
+                log.info("Canal #%s criado em %s", CANAL_CONTAS, guild.name)
+            except discord.Forbidden:
+                log.warning("Sem permissão pra criar #%s em %s", CANAL_CONTAS, guild.name)
     client.loop.create_task(loop_lembretes())
     client.loop.create_task(loop_pausas())
     client.loop.create_task(loop_recorrentes())
@@ -175,14 +189,19 @@ async def on_message(message: discord.Message):
             await message.channel.send(acao.get("resposta_chefe", "Beleza."))
 
         elif tipo == "conta":
-            canal_id = str(message.channel.id)
+            destino_contas = canal(message.guild, CANAL_CONTAS)
+            canal_id = str(destino_contas.id) if destino_contas else str(message.channel.id)
             criar_conta(acao["titulo"], acao["valor"], acao["vencimento"], canal_id, str(message.author.id))
-            await message.channel.send(
-                f"\U0001F4B0 Anotado{saud}! Conta **{acao['titulo']}** — R$ {acao['valor']:.2f}, vence {acao['vencimento']}"
-            )
+            linha = f"\U0001F4B0 **{acao['titulo']}** — R$ {acao['valor']:.2f}, vence {acao['vencimento']}"
+            if destino_contas:
+                await destino_contas.send(linha)
+            await message.channel.send(f"\U0001F4B0 Anotado{saud}! (em #{CANAL_CONTAS}) {linha[4:]}")
 
         elif tipo == "gasto":
             criar_gasto(acao["descricao"], acao["valor"], acao.get("categoria"))
+            destino_contas = canal(message.guild, CANAL_CONTAS)
+            if destino_contas:
+                await destino_contas.send(f"\U0001F4B8 {acao['descricao']} — R$ {acao['valor']:.2f}")
             await message.channel.send(
                 f"\U0001F4B8 Registrado{saud}: {acao['descricao']} — R$ {acao['valor']:.2f}"
             )
@@ -192,12 +211,63 @@ async def on_message(message: discord.Message):
             definir_limite_financeiro(acao["valor"], str(message.channel.id), str(message.author.id))
             await message.channel.send(f"\U0001F4CA Beleza{saud} — limite mensal definido em R$ {acao['valor']:.2f}")
 
+        elif tipo == "painel":
+            embed = montar_painel()
+            destino_geral = canal(message.guild, CANAL_GERAL)
+            if destino_geral:
+                await destino_geral.send(embed=embed)
+                await message.channel.send(f"\U0001F4CA Beleza{saud}! Painel atualizado em #{CANAL_GERAL}")
+            else:
+                await message.channel.send(embed=embed)
+
         elif tipo == "pergunta":
             pendentes[message.channel.id] = acao.get("contexto", {})
             await message.channel.send(f"❓ {acao['pergunta']}")
 
         elif tipo == "resposta":
             await message.channel.send(acao["texto"])
+
+
+def montar_painel() -> discord.Embed:
+    pendentes_t, concluidas_t = contar_tarefas()
+    ativas_m, concluidas_m = contar_metas()
+    feitos_h, perdidos_h = contar_habitos_recentes(30)
+    n_lembretes = contar_lembretes_pendentes()
+    n_contas, total_contas = contas_pendentes_resumo()
+
+    agora_local = datetime.now(FUSO)
+    total_gasto = total_gastos_mes(agora_local.year, agora_local.month)
+    config = obter_config_financeiro()
+    limite = float(config["limite_mensal"]) if config and config.get("limite_mensal") else None
+
+    embed = discord.Embed(
+        title="\U0001F4CA Seu desempenho",
+        color=discord.Color.blurple(),
+        timestamp=agora_local,
+    )
+    embed.add_field(name="\U0001F4CC Tarefas", value=f"{pendentes_t} pendentes · {concluidas_t} concluídas", inline=True)
+    embed.add_field(name="\U0001F3AF Metas", value=f"{ativas_m} ativas · {concluidas_m} concluídas", inline=True)
+    embed.add_field(name="⏰ Lembretes", value=f"{n_lembretes} pendentes", inline=True)
+    embed.add_field(
+        name="\U0001F501 Hábitos (30 dias)", value=f"{feitos_h} cumpridos · {perdidos_h} perdidos", inline=True
+    )
+
+    if n_contas or total_contas:
+        embed.add_field(name="\U0001F4B0 Contas a pagar", value=f"{n_contas} conta(s) · R$ {total_contas:.2f}", inline=True)
+    else:
+        embed.add_field(name="\U0001F4B0 Contas a pagar", value="Nenhuma pendente", inline=True)
+
+    if limite:
+        resta = limite - total_gasto
+        embed.add_field(
+            name="\U0001F4B8 Gastos do mês",
+            value=f"R$ {total_gasto:.2f} de R$ {limite:.2f} · ainda tem R$ {resta:.2f}",
+            inline=True,
+        )
+    else:
+        embed.add_field(name="\U0001F4B8 Gastos do mês", value=f"R$ {total_gasto:.2f} (sem limite definido)", inline=True)
+
+    return embed
 
 
 async def checar_ritmo_gastos(channel: discord.TextChannel, autor: discord.Member):
