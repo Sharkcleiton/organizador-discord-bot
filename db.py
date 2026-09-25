@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from supabase import create_client
 
@@ -67,3 +67,33 @@ def lembretes_recorrentes_ativos() -> list[dict]:
 
 def marcar_recorrente_executado(recorrente_id: str, data_str: str):
     _client.table("lembretes_recorrentes").update({"ultima_execucao": data_str}).eq("id", recorrente_id).execute()
+
+
+def criar_execucao_habito(recorrente_id: str, data_str: str) -> str | None:
+    resposta = (
+        _client.table("execucoes_habito")
+        .upsert({"recorrente_id": recorrente_id, "data": data_str}, on_conflict="recorrente_id,data")
+        .execute()
+    )
+    return resposta.data[0]["id"] if resposta.data else None
+
+
+def execucoes_para_cobrar(horas_limite: int) -> list[dict]:
+    limite = (datetime.now(timezone.utc) - timedelta(hours=horas_limite)).isoformat()
+    resposta = (
+        _client.table("execucoes_habito")
+        .select("*, lembretes_recorrentes(titulo,discord_channel_id,discord_user_id)")
+        .eq("status", "pendente")
+        .eq("cobrado", False)
+        .lte("criado_em", limite)
+        .execute()
+    )
+    return resposta.data
+
+
+def marcar_execucao_cobrada(execucao_id: str):
+    _client.table("execucoes_habito").update({"cobrado": True}).eq("id", execucao_id).execute()
+
+
+def marcar_execucao_status(execucao_id: str, status: str):
+    _client.table("execucoes_habito").update({"status": status}).eq("id", execucao_id).execute()

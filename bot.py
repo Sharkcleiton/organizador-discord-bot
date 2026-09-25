@@ -21,6 +21,10 @@ from db import (
     criar_lembrete_recorrente,
     lembretes_recorrentes_ativos,
     marcar_recorrente_executado,
+    criar_execucao_habito,
+    execucoes_para_cobrar,
+    marcar_execucao_cobrada,
+    marcar_execucao_status,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +40,14 @@ CANAL_METAS = "metas"
 FUSO = ZoneInfo(os.environ.get("FUSO_HORARIO", "America/Sao_Paulo"))
 
 DIAS_NOMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+
+HORAS_ANTES_DE_COBRAR = 3
+
+COBRANCAS = [
+    'ei chefe, você foi fazer "{titulo}" hoje? Cadê, hein?',
+    'cadê você, chefe? Combinamos "{titulo}" hoje e não vi confirmação. Qual foi a desculpa dessa vez?',
+    'opa chefe, passando aqui: "{titulo}" rolou hoje ou não? Tempo, preguiça, ou o quê?',
+]
 
 SUGESTOES_PAUSA = [
     "levanta e dá uma alongada rápida",
@@ -62,6 +74,7 @@ async def on_ready():
     client.loop.create_task(loop_lembretes())
     client.loop.create_task(loop_pausas())
     client.loop.create_task(loop_recorrentes())
+    client.loop.create_task(loop_cobranca())
 
 
 @client.event
@@ -122,6 +135,12 @@ async def on_message(message: discord.Message):
                 f"🔁 Combinado, chefe! Vou te lembrar de **{acao['titulo']}** toda(o) {dias_fmt} às {acao['horario']}"
             )
 
+        elif tipo == "checkin_habito":
+            if pendente and pendente.get("execucao_id"):
+                status = "feito" if acao.get("feito") else "nao_feito"
+                marcar_execucao_status(pendente["execucao_id"], status)
+            await message.channel.send(acao.get("resposta_chefe", "Beleza, chefe."))
+
         elif tipo == "pergunta":
             pendentes[message.channel.id] = acao.get("contexto", {})
             await message.channel.send(f"❓ {acao['pergunta']}")
@@ -164,10 +183,35 @@ async def loop_recorrentes():
                         await canal_obj.send(
                             f"🔁 <@{rec['discord_user_id']}> **{rec['titulo']}** — hora de manter o hábito, chefe!"
                         )
+                    criar_execucao_habito(rec["id"], data_str)
                     marcar_recorrente_executado(rec["id"], data_str)
         except Exception:
             log.exception("erro no loop de recorrentes")
         await asyncio.sleep(60)
+
+
+async def loop_cobranca():
+    await client.wait_until_ready()
+    while not client.is_closed():
+        await asyncio.sleep(30 * 60)
+        try:
+            for execucao in execucoes_para_cobrar(HORAS_ANTES_DE_COBRAR):
+                rec = execucao.get("lembretes_recorrentes") or {}
+                canal_id = rec.get("discord_channel_id")
+                canal_obj = client.get_channel(int(canal_id)) if canal_id else None
+                if canal_obj:
+                    titulo = rec.get("titulo", "seu hábito")
+                    mencao = f"<@{rec['discord_user_id']}> " if rec.get("discord_user_id") else ""
+                    cobranca = random.choice(COBRANCAS).format(titulo=titulo)
+                    await canal_obj.send(f"{mencao}{cobranca}")
+                    pendentes[canal_obj.id] = {
+                        "tipo_pendente": "checkin_habito",
+                        "execucao_id": execucao["id"],
+                        "titulo": titulo,
+                    }
+                marcar_execucao_cobrada(execucao["id"])
+        except Exception:
+            log.exception("erro no loop de cobranca")
 
 
 async def loop_pausas():
