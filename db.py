@@ -205,3 +205,23 @@ def contas_pendentes_resumo() -> tuple[int, float]:
     resposta = _client.table("contas").select("valor").eq("pago", False).execute()
     total = sum(float(r["valor"]) for r in resposta.data)
     return len(resposta.data), total
+
+
+TABELA_POR_CATEGORIA = {
+    "tarefa": "tarefas",
+    "conta": "contas",
+    "lembrete": "lembretes",
+    "meta": "metas",
+    "lembrete_recorrente": "lembretes_recorrentes",
+}
+
+
+def buscar_por_titulo(categoria: str, termo: str) -> list[dict]:
+    tabela = TABELA_POR_CATEGORIA[categoria]
+    resposta = _client.table(tabela).select("id,titulo").ilike("titulo", f"%{termo}%").execute()
+    return resposta.data
+
+
+def excluir_por_id(categoria: str, item_id: str):
+    tabela = TABELA_POR_CATEGORIA[categoria]
+    _client.table(tabela).delete().eq("id", item_id).execute()

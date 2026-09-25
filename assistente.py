@@ -26,6 +26,7 @@ Tipos de ação:
 - "gasto": um gasto que o usuário já fez — {"tipo":"gasto","descricao":str,"valor":number,"categoria":str ou null (ex: "mercado","transporte","lazer","contas","outros")}
 - "limite_financeiro": quando o usuário definir ou mudar um limite/orçamento mensal de gastos — {"tipo":"limite_financeiro","valor":number}
 - "painel": quando o usuário pedir um resumo/desempenho/status geral (ex: "mostra meu desempenho", "como eu tô indo", "resumo", "quanto eu tenho") — {"tipo":"painel"}
+- "excluir": quando o usuário pedir pra apagar/cancelar/remover algo (tarefa, conta, lembrete, meta ou hábito recorrente) — {"tipo":"excluir","categoria":"tarefa"|"conta"|"lembrete"|"meta"|"lembrete_recorrente"|null (null se não der pra saber qual tipo),"termo":str (palavra-chave pra buscar, ex: o nome/assunto)}. NÃO apague nada você mesmo — só gere essa ação, o sistema cuida de perguntar qual item e confirmar antes de excluir.
 - "pergunta": quando faltar informação para decidir (ex: não sabe se vira tarefa ou lembrete, ou falta prazo/horário, ou falta dias/horário de um hábito recorrente) —
   {"tipo":"pergunta","pergunta":str,"contexto":{...guarde aqui o que você já entendeu da mensagem, para completar quando o usuário responder...}}
 - "resposta": só uma resposta de texto simples, sem criar nada — {"tipo":"resposta","texto":str}

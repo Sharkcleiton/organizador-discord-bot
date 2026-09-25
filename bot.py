@@ -38,6 +38,8 @@ from db import (
     contar_habitos_recentes,
     contar_lembretes_pendentes,
     contas_pendentes_resumo,
+    buscar_por_titulo,
+    excluir_por_id,
 )
 import calendar
 
@@ -62,6 +64,15 @@ AVISOS_GASTO = [
 ]
 
 FUSO = ZoneInfo(os.environ.get("FUSO_HORARIO", "America/Sao_Paulo"))
+
+NOME_CATEGORIA = {
+    "tarefa": "tarefa",
+    "conta": "conta",
+    "lembrete": "lembrete",
+    "meta": "meta",
+    "lembrete_recorrente": "hábito recorrente",
+}
+CATEGORIAS_BUSCA = list(NOME_CATEGORIA.keys())
 
 DIAS_NOMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 
@@ -220,6 +231,46 @@ async def on_message(message: discord.Message):
             else:
                 await message.channel.send(embed=embed)
 
+        elif tipo == "excluir":
+            categoria = acao.get("categoria")
+            termo = acao["termo"]
+            categorias = [categoria] if categoria in NOME_CATEGORIA else CATEGORIAS_BUSCA
+
+            encontrados = []  # (categoria, item)
+            for cat in categorias:
+                for item in buscar_por_titulo(cat, termo):
+                    encontrados.append((cat, item))
+
+            if not encontrados:
+                await message.channel.send(f"❌ Não achei nada com \"{termo}\"{saud}.")
+            elif len(encontrados) == 1:
+                cat, item = encontrados[0]
+                view = ConfirmarExclusao(cat, item["id"], item["titulo"], message.author.id)
+                await message.channel.send(
+                    f"Confirma excluir **{item['titulo']}** ({NOME_CATEGORIA[cat]})?", view=view
+                )
+            else:
+                if categoria in NOME_CATEGORIA:
+                    view = EscolherItemParaExcluir(categoria, [i for _, i in encontrados], message.author.id)
+                    await message.channel.send(f"Achei mais de um com \"{termo}\" — qual deles?", view=view)
+                else:
+                    # mistura categorias: monta view manual com callbacks fixando a categoria certa por item
+                    view = discord.ui.View(timeout=60)
+                    for cat, item in encontrados[:5]:
+                        botao = discord.ui.Button(label=f"[{NOME_CATEGORIA[cat]}] {item['titulo'][:60]}", style=discord.ButtonStyle.primary)
+
+                        async def callback(interaction: discord.Interaction, cat=cat, item=item):
+                            if interaction.user.id != message.author.id:
+                                return
+                            confirmar = ConfirmarExclusao(cat, item["id"], item["titulo"], message.author.id)
+                            await interaction.response.edit_message(
+                                content=f"Confirma excluir **{item['titulo']}** ({NOME_CATEGORIA[cat]})?", view=confirmar
+                            )
+
+                        botao.callback = callback
+                        view.add_item(botao)
+                    await message.channel.send(f"Achei mais de um com \"{termo}\" — qual deles?", view=view)
+
         elif tipo == "pergunta":
             pendentes[message.channel.id] = acao.get("contexto", {})
             await message.channel.send(f"❓ {acao['pergunta']}")
@@ -268,6 +319,69 @@ def montar_painel() -> discord.Embed:
         embed.add_field(name="\U0001F4B8 Gastos do mês", value=f"R$ {total_gasto:.2f} (sem limite definido)", inline=True)
 
     return embed
+
+
+class ConfirmarExclusao(discord.ui.View):
+    def __init__(self, categoria: str, item_id: str, titulo: str, autor_id: int):
+        super().__init__(timeout=60)
+        self.categoria = categoria
+        self.item_id = item_id
+        self.titulo = titulo
+        self.autor_id = autor_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.autor_id
+
+    @discord.ui.button(label="Excluir", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def excluir(self, interaction: discord.Interaction, botao: discord.ui.Button):
+        excluir_por_id(self.categoria, self.item_id)
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(
+            content=f"🗑️ Excluído: **{self.titulo}** ({NOME_CATEGORIA[self.categoria]})", view=self
+        )
+
+    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.secondary)
+    async def cancelar(self, interaction: discord.Interaction, botao: discord.ui.Button):
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(content=f"Beleza, deixei **{self.titulo}** como está.", view=self)
+
+
+class EscolherItemParaExcluir(discord.ui.View):
+    def __init__(self, categoria: str, itens: list[dict], autor_id: int):
+        super().__init__(timeout=60)
+        self.autor_id = autor_id
+        for item in itens[:5]:
+            self.add_item(self._criar_botao(categoria, item))
+        cancelar = discord.ui.Button(label="Cancelar", style=discord.ButtonStyle.secondary)
+        cancelar.callback = self._cancelar
+        self.add_item(cancelar)
+
+    def _criar_botao(self, categoria: str, item: dict) -> discord.ui.Button:
+        rotulo = item["titulo"][:75]
+        botao = discord.ui.Button(label=rotulo, style=discord.ButtonStyle.primary)
+
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.autor_id:
+                return
+            view = ConfirmarExclusao(categoria, item["id"], item["titulo"], self.autor_id)
+            await interaction.response.edit_message(
+                content=f"Confirma excluir **{item['titulo']}** ({NOME_CATEGORIA[categoria]})?", view=view
+            )
+
+        botao.callback = callback
+        return botao
+
+    async def _cancelar(self, interaction: discord.Interaction):
+        if interaction.user.id != self.autor_id:
+            return
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(content="Beleza, não mexi em nada.", view=self)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.autor_id
 
 
 async def checar_ritmo_gastos(channel: discord.TextChannel, autor: discord.Member):
