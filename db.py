@@ -46,3 +46,24 @@ def lembretes_pendentes() -> list[dict]:
 
 def marcar_lembrete_enviado(lembrete_id: str):
     _client.table("lembretes").update({"enviado": True}).eq("id", lembrete_id).execute()
+
+
+def criar_lembrete_recorrente(
+    titulo: str, dias_semana: list[int], horario: str, discord_channel_id: str, discord_user_id: str
+):
+    _client.table("lembretes_recorrentes").insert({
+        "titulo": titulo,
+        "dias_semana": dias_semana,
+        "horario": horario,
+        "discord_channel_id": discord_channel_id,
+        "discord_user_id": discord_user_id,
+    }).execute()
+
+
+def lembretes_recorrentes_ativos() -> list[dict]:
+    resposta = _client.table("lembretes_recorrentes").select("*").eq("ativo", True).execute()
+    return resposta.data
+
+
+def marcar_recorrente_executado(recorrente_id: str, data_str: str):
+    _client.table("lembretes_recorrentes").update({"ultima_execucao": data_str}).eq("id", recorrente_id).execute()

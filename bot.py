@@ -18,6 +18,9 @@ from db import (
     criar_meta,
     lembretes_pendentes,
     marcar_lembrete_enviado,
+    criar_lembrete_recorrente,
+    lembretes_recorrentes_ativos,
+    marcar_recorrente_executado,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +34,8 @@ CANAL_LEMBRETES = "lembretes"
 CANAL_METAS = "metas"
 
 FUSO = ZoneInfo(os.environ.get("FUSO_HORARIO", "America/Sao_Paulo"))
+
+DIAS_NOMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 
 SUGESTOES_PAUSA = [
     "levanta e dá uma alongada rápida",
@@ -56,6 +61,7 @@ async def on_ready():
     log.info("Conectado como %s", client.user)
     client.loop.create_task(loop_lembretes())
     client.loop.create_task(loop_pausas())
+    client.loop.create_task(loop_recorrentes())
 
 
 @client.event
@@ -105,6 +111,17 @@ async def on_message(message: discord.Message):
                 await destino.send(f"\U0001F3AF **{acao['titulo']}**")
             await message.channel.send(f"\U0001F3AF Meta registrada, chefe! (em #{CANAL_METAS}) **{acao['titulo']}**")
 
+        elif tipo == "lembrete_recorrente":
+            destino_lembretes = canal(message.guild, CANAL_LEMBRETES)
+            canal_id = str(destino_lembretes.id) if destino_lembretes else str(message.channel.id)
+            criar_lembrete_recorrente(
+                acao["titulo"], acao["dias_semana"], acao["horario"], canal_id, str(message.author.id)
+            )
+            dias_fmt = ", ".join(DIAS_NOMES[d] for d in sorted(acao["dias_semana"]))
+            await message.channel.send(
+                f"🔁 Combinado, chefe! Vou te lembrar de **{acao['titulo']}** toda(o) {dias_fmt} às {acao['horario']}"
+            )
+
         elif tipo == "pergunta":
             pendentes[message.channel.id] = acao.get("contexto", {})
             await message.channel.send(f"❓ {acao['pergunta']}")
@@ -125,6 +142,31 @@ async def loop_lembretes():
                 marcar_lembrete_enviado(lembrete["id"])
         except Exception:
             log.exception("erro no loop de lembretes")
+        await asyncio.sleep(60)
+
+
+async def loop_recorrentes():
+    await client.wait_until_ready()
+    while not client.is_closed():
+        try:
+            agora_local = datetime.now(FUSO)
+            dia_semana = agora_local.weekday()
+            hora_str = agora_local.strftime("%H:%M")
+            data_str = agora_local.date().isoformat()
+            for rec in lembretes_recorrentes_ativos():
+                if (
+                    dia_semana in rec["dias_semana"]
+                    and rec["horario"][:5] == hora_str
+                    and rec.get("ultima_execucao") != data_str
+                ):
+                    canal_obj = client.get_channel(int(rec["discord_channel_id"]))
+                    if canal_obj:
+                        await canal_obj.send(
+                            f"🔁 <@{rec['discord_user_id']}> **{rec['titulo']}** — hora de manter o hábito, chefe!"
+                        )
+                    marcar_recorrente_executado(rec["id"], data_str)
+        except Exception:
+            log.exception("erro no loop de recorrentes")
         await asyncio.sleep(60)
 
 
