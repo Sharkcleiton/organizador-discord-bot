@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -80,9 +80,21 @@ client = discord.Client(intents=intents)
 
 pendentes: dict[int, dict] = {}  # channel_id -> contexto da pergunta em aberto
 
+COOLDOWN_CHEFE = timedelta(minutes=20)
+ultimo_chefe: dict[int, datetime] = {}  # channel_id -> quando foi a última vez que disse "chefe"
+
 
 def canal(guild: discord.Guild, nome: str) -> discord.TextChannel | None:
     return discord.utils.get(guild.text_channels, name=nome)
+
+
+def deve_dizer_chefe(channel_id: int) -> bool:
+    agora = datetime.now(FUSO)
+    ultimo = ultimo_chefe.get(channel_id)
+    if ultimo is None or (agora - ultimo) > COOLDOWN_CHEFE:
+        ultimo_chefe[channel_id] = agora
+        return True
+    return False
 
 
 @client.event
@@ -104,8 +116,10 @@ async def on_message(message: discord.Message):
         return
 
     pendente = pendentes.get(message.channel.id)
+    usar_chefe = deve_dizer_chefe(message.channel.id)
+    saud = ", chefe" if usar_chefe else ""
     try:
-        resultado = await processar_mensagem(message.content, pendente=pendente)
+        resultado = await processar_mensagem(message.content, pendente=pendente, usar_chefe=usar_chefe)
     except Exception:
         log.exception("erro ao processar mensagem")
         await message.channel.send("⚠️ Deu um erro aqui do meu lado processando isso — tenta de novo em instantes.")
@@ -123,7 +137,7 @@ async def on_message(message: discord.Message):
             destino = canal(message.guild, CANAL_TAREFAS)
             if destino:
                 await destino.send(linha)
-            await message.channel.send(f"\U0001F4CC Anotado, chefe! (em #{CANAL_TAREFAS}) {linha[4:]}")
+            await message.channel.send(f"\U0001F4CC Anotado{saud}! (em #{CANAL_TAREFAS}) {linha[4:]}")
 
         elif tipo == "lembrete":
             destino_lembretes = canal(message.guild, CANAL_LEMBRETES)
@@ -131,7 +145,7 @@ async def on_message(message: discord.Message):
             criar_lembrete(acao["titulo"], acao["disparar_em"], canal_id, str(message.author.id))
             horario_fmt = datetime.fromisoformat(acao["disparar_em"]).strftime("%d/%m às %H:%M")
             await message.channel.send(
-                f"⏰ Combinado, chefe! Vou te lembrar **{horario_fmt}**: {acao['titulo']}"
+                f"⏰ Combinado{saud}! Vou te lembrar **{horario_fmt}**: {acao['titulo']}"
             )
 
         elif tipo == "meta":
@@ -141,7 +155,7 @@ async def on_message(message: discord.Message):
             destino = canal(message.guild, CANAL_METAS)
             if destino:
                 await destino.send(f"\U0001F3AF **{acao['titulo']}**")
-            await message.channel.send(f"\U0001F3AF Meta registrada, chefe! (em #{CANAL_METAS}) **{acao['titulo']}**")
+            await message.channel.send(f"\U0001F3AF Meta registrada{saud}! (em #{CANAL_METAS}) **{acao['titulo']}**")
 
         elif tipo == "lembrete_recorrente":
             destino_lembretes = canal(message.guild, CANAL_LEMBRETES)
@@ -151,32 +165,32 @@ async def on_message(message: discord.Message):
             )
             dias_fmt = ", ".join(DIAS_NOMES[d] for d in sorted(acao["dias_semana"]))
             await message.channel.send(
-                f"🔁 Combinado, chefe! Vou te lembrar de **{acao['titulo']}** toda(o) {dias_fmt} às {acao['horario']}"
+                f"🔁 Combinado{saud}! Vou te lembrar de **{acao['titulo']}** toda(o) {dias_fmt} às {acao['horario']}"
             )
 
         elif tipo == "checkin_habito":
             if pendente and pendente.get("execucao_id"):
                 status = "feito" if acao.get("feito") else "nao_feito"
                 marcar_execucao_status(pendente["execucao_id"], status)
-            await message.channel.send(acao.get("resposta_chefe", "Beleza, chefe."))
+            await message.channel.send(acao.get("resposta_chefe", "Beleza."))
 
         elif tipo == "conta":
             canal_id = str(message.channel.id)
             criar_conta(acao["titulo"], acao["valor"], acao["vencimento"], canal_id, str(message.author.id))
             await message.channel.send(
-                f"\U0001F4B0 Anotado, chefe! Conta **{acao['titulo']}** — R$ {acao['valor']:.2f}, vence {acao['vencimento']}"
+                f"\U0001F4B0 Anotado{saud}! Conta **{acao['titulo']}** — R$ {acao['valor']:.2f}, vence {acao['vencimento']}"
             )
 
         elif tipo == "gasto":
             criar_gasto(acao["descricao"], acao["valor"], acao.get("categoria"))
             await message.channel.send(
-                f"\U0001F4B8 Registrado, chefe: {acao['descricao']} — R$ {acao['valor']:.2f}"
+                f"\U0001F4B8 Registrado{saud}: {acao['descricao']} — R$ {acao['valor']:.2f}"
             )
             await checar_ritmo_gastos(message.channel, message.author)
 
         elif tipo == "limite_financeiro":
             definir_limite_financeiro(acao["valor"], str(message.channel.id), str(message.author.id))
-            await message.channel.send(f"\U0001F4CA Beleza, chefe — limite mensal definido em R$ {acao['valor']:.2f}")
+            await message.channel.send(f"\U0001F4CA Beleza{saud} — limite mensal definido em R$ {acao['valor']:.2f}")
 
         elif tipo == "pergunta":
             pendentes[message.channel.id] = acao.get("contexto", {})

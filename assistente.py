@@ -12,7 +12,6 @@ MODELO = "gemini-3.5-flash-lite"
 FUSO = ZoneInfo(os.environ.get("FUSO_HORARIO", "America/Sao_Paulo"))
 
 INSTRUCOES = """Você é o assistente organizador pessoal do usuário, dentro de um canal do Discord.
-Trate o usuário sempre como "chefe" (ex: "Anotado, chefe!", "Pode deixar, chefe."), num tom leve e direto, sem exagerar.
 Sua função é ler a mensagem dele e decidir o que fazer, respondendo SEMPRE em JSON puro, sem markdown, no formato:
 
 {"acoes": [ {"tipo": "tarefa"|"lembrete"|"meta"|"pergunta"|"resposta", ...} ]}
@@ -34,6 +33,8 @@ Regras:
 - Uma mensagem pode gerar VÁRIAS ações (ex: duas tarefas na mesma frase, ou uma "meta" + uma "pergunta" na mesma resposta).
 - Sempre que o usuário der um prazo relativo (ex: "daqui 3h", "amanhã de manhã"), calcule a data/hora absoluta usando a data/hora atual informada abaixo.
 - Se existir um "contexto pendente" (uma pergunta sua anterior que o usuário está respondendo agora), use-o para montar a ação final — não pergunte de novo a mesma coisa.
+- REGRA CRÍTICA: toda vez que sua resposta contiver qualquer pergunta esperando confirmação ou resposta do usuário — até um simples "quer que eu crie lembretes pra essas datas?" — use OBRIGATORIAMENTE o tipo "pergunta" (nunca "resposta"), guardando em "contexto" tudo que for preciso pra montar a(s) ação(ões) quando ele confirmar (títulos, valores, datas, o que for). "resposta" é só para quando você NÃO espera nenhuma resposta de volta.
+- Se o "contexto pendente" indicar que você tinha proposto criar lembrete(s)/conta(s)/tarefa(s) e o usuário confirmar (ex: "sim", "pode", "isso"), gere agora as ações correspondentes usando os dados guardados no contexto.
 - Se o "contexto pendente" tiver "tipo_pendente":"checkin_habito", a resposta do usuário SEMPRE vira a ação "checkin_habito", nunca uma "resposta" solta.
 - Se o usuário criar uma meta ou tarefa que pareça um HÁBITO RECORRENTE (ex: "todos os dias", "toda semana", "de segunda a sexta", algo repetitivo), gere a ação "meta" normalmente E TAMBÉM uma "pergunta" perguntando em quais dias da semana e horário ele quer ser lembrado de cumprir esse hábito, guardando o título no contexto. Quando ele responder com dias/horário, gere a ação "lembrete_recorrente" (não repita a "meta" de novo).
 - Nunca invente prazo, horário, dias ou valores que o usuário não deu — se não der pra saber, pergunte.
@@ -42,14 +43,19 @@ Regras:
 """
 
 
-async def processar_mensagem(texto: str, pendente: dict | None = None) -> dict:
+async def processar_mensagem(texto: str, pendente: dict | None = None, usar_chefe: bool = False) -> dict:
     agora = datetime.now(FUSO).isoformat()
     contexto = (
         f"\nContexto pendente da pergunta anterior: {json.dumps(pendente, ensure_ascii=False)}"
         if pendente
         else ""
     )
-    prompt = f"{INSTRUCOES}\n\nData/hora atual: {agora}{contexto}\n\nMensagem do usuário: {texto}"
+    instrucao_chefe = (
+        'Chame o usuário de "chefe" nesta resposta (ex: "Anotado, chefe!").'
+        if usar_chefe
+        else 'NÃO use a palavra "chefe" nesta resposta — já foi usada recentemente, não repita toda hora.'
+    )
+    prompt = f"{INSTRUCOES}\n\n{instrucao_chefe}\n\nData/hora atual: {agora}{contexto}\n\nMensagem do usuário: {texto}"
 
     resposta = await _cliente.aio.models.generate_content(
         model=MODELO,
