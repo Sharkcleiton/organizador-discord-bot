@@ -1,0 +1,15 @@
+[Unit]
+Description=Organizador Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=organizador
+WorkingDirectory=/home/organizador/organizador-discord-bot
+EnvironmentFile=/home/organizador/organizador-discord-bot/.env
+ExecStart=/home/organizador/organizador-discord-bot/venv/bin/python bot.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
