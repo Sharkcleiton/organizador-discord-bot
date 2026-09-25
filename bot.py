@@ -25,7 +25,16 @@ from db import (
     execucoes_para_cobrar,
     marcar_execucao_cobrada,
     marcar_execucao_status,
+    criar_conta,
+    contas_a_vencer,
+    marcar_conta_lembrada,
+    criar_gasto,
+    total_gastos_mes,
+    definir_limite_financeiro,
+    obter_config_financeiro,
+    marcar_avisado_hoje,
 )
+import calendar
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("organizador")
@@ -36,6 +45,14 @@ CANAL_ASSISTENTE = "assistente"
 CANAL_TAREFAS = "tarefas"
 CANAL_LEMBRETES = "lembretes"
 CANAL_METAS = "metas"
+
+DIAS_ANTES_DE_LEMBRAR_CONTA = 3
+
+AVISOS_GASTO = [
+    "tá gastando muito, patrão... daqui a pouco tá tudo lascado, viu 😅",
+    "chefe, olha o ritmo dos gastos esse mês, hein — não vacila",
+    "opa, vou avisando: gasto tá pesado esse mês, chefe. Segura a onda.",
+]
 
 FUSO = ZoneInfo(os.environ.get("FUSO_HORARIO", "America/Sao_Paulo"))
 
@@ -75,6 +92,8 @@ async def on_ready():
     client.loop.create_task(loop_pausas())
     client.loop.create_task(loop_recorrentes())
     client.loop.create_task(loop_cobranca())
+    client.loop.create_task(loop_contas())
+    client.loop.create_task(loop_financeiro())
 
 
 @client.event
@@ -141,12 +160,53 @@ async def on_message(message: discord.Message):
                 marcar_execucao_status(pendente["execucao_id"], status)
             await message.channel.send(acao.get("resposta_chefe", "Beleza, chefe."))
 
+        elif tipo == "conta":
+            canal_id = str(message.channel.id)
+            criar_conta(acao["titulo"], acao["valor"], acao["vencimento"], canal_id, str(message.author.id))
+            await message.channel.send(
+                f"\U0001F4B0 Anotado, chefe! Conta **{acao['titulo']}** — R$ {acao['valor']:.2f}, vence {acao['vencimento']}"
+            )
+
+        elif tipo == "gasto":
+            criar_gasto(acao["descricao"], acao["valor"], acao.get("categoria"))
+            await message.channel.send(
+                f"\U0001F4B8 Registrado, chefe: {acao['descricao']} — R$ {acao['valor']:.2f}"
+            )
+            await checar_ritmo_gastos(message.channel, message.author)
+
+        elif tipo == "limite_financeiro":
+            definir_limite_financeiro(acao["valor"], str(message.channel.id), str(message.author.id))
+            await message.channel.send(f"\U0001F4CA Beleza, chefe — limite mensal definido em R$ {acao['valor']:.2f}")
+
         elif tipo == "pergunta":
             pendentes[message.channel.id] = acao.get("contexto", {})
             await message.channel.send(f"❓ {acao['pergunta']}")
 
         elif tipo == "resposta":
             await message.channel.send(acao["texto"])
+
+
+async def checar_ritmo_gastos(channel: discord.TextChannel, autor: discord.Member):
+    config = obter_config_financeiro()
+    if not config or not config.get("limite_mensal"):
+        return
+    agora_local = datetime.now(FUSO)
+    hoje_str = agora_local.date().isoformat()
+    if config.get("avisado_em") == hoje_str:
+        return
+
+    dias_no_mes = calendar.monthrange(agora_local.year, agora_local.month)[1]
+    pct_tempo = agora_local.day / dias_no_mes
+    total = total_gastos_mes(agora_local.year, agora_local.month)
+    limite = float(config["limite_mensal"])
+    pct_gasto = total / limite if limite else 0
+
+    if pct_gasto > pct_tempo + 0.15:
+        aviso = random.choice(AVISOS_GASTO)
+        await channel.send(
+            f"{autor.mention} {aviso} (já gastou R$ {total:.2f} de R$ {limite:.2f} esse mês)"
+        )
+        marcar_avisado_hoje(hoje_str)
 
 
 async def loop_lembretes():
@@ -212,6 +272,40 @@ async def loop_cobranca():
                 marcar_execucao_cobrada(execucao["id"])
         except Exception:
             log.exception("erro no loop de cobranca")
+
+
+async def loop_contas():
+    await client.wait_until_ready()
+    while not client.is_closed():
+        try:
+            for conta in contas_a_vencer(DIAS_ANTES_DE_LEMBRAR_CONTA):
+                canal_obj = client.get_channel(int(conta["discord_channel_id"]))
+                if canal_obj:
+                    mencao = f"<@{conta['discord_user_id']}> " if conta.get("discord_user_id") else ""
+                    await canal_obj.send(
+                        f"\U0001F4B0 {mencao}**CONTA VENCENDO, chefe:** {conta['titulo']} — "
+                        f"R$ {float(conta['valor']):.2f}, vence {conta['vencimento']}"
+                    )
+                marcar_conta_lembrada(conta["id"])
+        except Exception:
+            log.exception("erro no loop de contas")
+        await asyncio.sleep(6 * 60 * 60)  # a cada 6 horas
+
+
+async def loop_financeiro():
+    await client.wait_until_ready()
+    while not client.is_closed():
+        await asyncio.sleep(12 * 60 * 60)  # a cada 12 horas
+        try:
+            config = obter_config_financeiro()
+            if not config or not config.get("limite_mensal") or not config.get("discord_channel_id"):
+                continue
+            canal_obj = client.get_channel(int(config["discord_channel_id"]))
+            autor = await client.fetch_user(int(config["discord_user_id"])) if canal_obj else None
+            if canal_obj and autor:
+                await checar_ritmo_gastos(canal_obj, autor)
+        except Exception:
+            log.exception("erro no loop financeiro")
 
 
 async def loop_pausas():
