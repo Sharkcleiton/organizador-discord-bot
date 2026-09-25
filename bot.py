@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from datetime import datetime
 
 from dotenv import load_dotenv
 
@@ -77,8 +78,9 @@ async def on_message(message: discord.Message):
             destino_lembretes = canal(message.guild, CANAL_LEMBRETES)
             canal_id = str(destino_lembretes.id) if destino_lembretes else str(message.channel.id)
             criar_lembrete(acao["titulo"], acao["disparar_em"], canal_id, str(message.author.id))
+            horario_fmt = datetime.fromisoformat(acao["disparar_em"]).strftime("%d/%m às %H:%M")
             await message.channel.send(
-                f"⏰ Combinado! Vou te lembrar em **{acao['disparar_em']}**: {acao['titulo']}"
+                f"⏰ Combinado! Vou te lembrar **{horario_fmt}**: {acao['titulo']}"
             )
 
         elif tipo == "meta":

@@ -1,6 +1,7 @@
 import os
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from google import genai
 from google.genai import types
@@ -8,6 +9,7 @@ from google.genai import types
 _cliente = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 MODELO = "gemini-3.5-flash-lite"
+FUSO = ZoneInfo(os.environ.get("FUSO_HORARIO", "America/Sao_Paulo"))
 
 INSTRUCOES = """Você é o assistente organizador pessoal do usuário, dentro de um canal do Discord.
 Sua função é ler a mensagem dele e decidir o que fazer, respondendo SEMPRE em JSON puro, sem markdown, no formato:
@@ -16,7 +18,7 @@ Sua função é ler a mensagem dele e decidir o que fazer, respondendo SEMPRE em
 
 Tipos de ação:
 - "tarefa": {"tipo":"tarefa","titulo":str,"descricao":str ou null,"prazo":"YYYY-MM-DD" ou null}
-- "lembrete": {"tipo":"lembrete","titulo":str,"disparar_em":"YYYY-MM-DDTHH:MM:SS"}
+- "lembrete": {"tipo":"lembrete","titulo":str,"disparar_em":"YYYY-MM-DDTHH:MM:SS-03:00"} (sempre com o offset -03:00 do horário de Brasília)
 - "meta": {"tipo":"meta","titulo":str,"descricao":str ou null,"tipo_meta":"semanal"|"mensal"|"anual","prazo":"YYYY-MM-DD" ou null}
 - "pergunta": quando faltar informação para decidir (ex: não sabe se vira tarefa ou lembrete, ou falta prazo/horário) —
   {"tipo":"pergunta","pergunta":str,"contexto":{...guarde aqui o que você já entendeu da mensagem, para completar quando o usuário responder...}}
@@ -32,7 +34,7 @@ Regras:
 
 
 async def processar_mensagem(texto: str, pendente: dict | None = None) -> dict:
-    agora = datetime.now().isoformat()
+    agora = datetime.now(FUSO).isoformat()
     contexto = (
         f"\nContexto pendente da pergunta anterior: {json.dumps(pendente, ensure_ascii=False)}"
         if pendente
