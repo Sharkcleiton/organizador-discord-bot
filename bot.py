@@ -109,6 +109,10 @@ def canal(guild: discord.Guild, nome: str) -> discord.TextChannel | None:
     return discord.utils.get(guild.text_channels, name=nome)
 
 
+def reais(valor: float) -> str:
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def deve_dizer_chefe(channel_id: int) -> bool:
     agora = datetime.now(FUSO)
     ultimo = ultimo_chefe.get(channel_id)
@@ -207,7 +211,7 @@ async def on_message(message: discord.Message):
             destino_contas = canal(message.guild, CANAL_CONTAS)
             canal_id = str(destino_contas.id) if destino_contas else str(message.channel.id)
             criar_conta(acao["titulo"], acao["valor"], acao["vencimento"], canal_id, str(message.author.id))
-            linha = f"\U0001F4B0 **{acao['titulo']}** — R$ {acao['valor']:.2f}, vence {acao['vencimento']}"
+            linha = f"\U0001F4B0 **{acao['titulo']}** — {reais(acao['valor'])}, vence {acao['vencimento']}"
             if destino_contas:
                 await destino_contas.send(linha)
             await message.channel.send(f"\U0001F4B0 Anotado{saud}! (em #{CANAL_CONTAS}) {linha[4:]}")
@@ -216,15 +220,15 @@ async def on_message(message: discord.Message):
             criar_gasto(acao["descricao"], acao["valor"], acao.get("categoria"))
             destino_contas = canal(message.guild, CANAL_CONTAS)
             if destino_contas:
-                await destino_contas.send(f"\U0001F4B8 {acao['descricao']} — R$ {acao['valor']:.2f}")
+                await destino_contas.send(f"\U0001F4B8 {acao['descricao']} — {reais(acao['valor'])}")
             await message.channel.send(
-                f"\U0001F4B8 Registrado{saud}: {acao['descricao']} — R$ {acao['valor']:.2f}"
+                f"\U0001F4B8 Registrado{saud}: {acao['descricao']} — {reais(acao['valor'])}"
             )
             await checar_ritmo_gastos(message.channel, message.author)
 
         elif tipo == "limite_financeiro":
             definir_limite_financeiro(acao["valor"], str(message.channel.id), str(message.author.id))
-            await message.channel.send(f"\U0001F4CA Beleza{saud} — limite mensal definido em R$ {acao['valor']:.2f}")
+            await message.channel.send(f"\U0001F4CA Beleza{saud} — limite mensal definido em {reais(acao['valor'])}")
 
         elif tipo == "painel":
             embed = montar_painel()
@@ -308,7 +312,7 @@ def montar_painel() -> discord.Embed:
     )
 
     if n_contas or total_contas:
-        embed.add_field(name="\U0001F4B0 Contas a pagar", value=f"{n_contas} conta(s) · R$ {total_contas:.2f}", inline=True)
+        embed.add_field(name="\U0001F4B0 Contas a pagar", value=f"{n_contas} conta(s) · {reais(total_contas)}", inline=True)
     else:
         embed.add_field(name="\U0001F4B0 Contas a pagar", value="Nenhuma pendente", inline=True)
 
@@ -316,11 +320,11 @@ def montar_painel() -> discord.Embed:
         resta = limite - total_gasto
         embed.add_field(
             name="\U0001F4B8 Gastos do mês",
-            value=f"R$ {total_gasto:.2f} de R$ {limite:.2f} · ainda tem R$ {resta:.2f}",
+            value=f"{reais(total_gasto)} de {reais(limite)} · ainda tem {reais(resta)}",
             inline=True,
         )
     else:
-        embed.add_field(name="\U0001F4B8 Gastos do mês", value=f"R$ {total_gasto:.2f} (sem limite definido)", inline=True)
+        embed.add_field(name="\U0001F4B8 Gastos do mês", value=f"{reais(total_gasto)} (sem limite definido)", inline=True)
 
     return embed
 
@@ -406,7 +410,7 @@ async def checar_ritmo_gastos(channel: discord.TextChannel, autor: discord.Membe
     if pct_gasto > pct_tempo + 0.15:
         aviso = random.choice(AVISOS_GASTO)
         await channel.send(
-            f"{autor.mention} {aviso} (já gastou R$ {total:.2f} de R$ {limite:.2f} esse mês)"
+            f"{autor.mention} {aviso} (já gastou {reais(total)} de {reais(limite)} esse mês)"
         )
         marcar_avisado_hoje(hoje_str)
 
@@ -505,7 +509,7 @@ async def loop_contas():
                     mencao = f"<@{conta['discord_user_id']}> " if conta.get("discord_user_id") else ""
                     await canal_obj.send(
                         f"\U0001F4B0 {mencao}**CONTA VENCENDO, chefe:** {conta['titulo']} — "
-                        f"R$ {float(conta['valor']):.2f}, vence {conta['vencimento']}"
+                        f"{reais(float(conta['valor']))}, vence {conta['vencimento']}"
                     )
                 marcar_conta_lembrada(conta["id"])
         except Exception:
