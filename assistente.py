@@ -25,7 +25,12 @@ Tipos de ação:
 - "conta": conta a pagar com vencimento — {"tipo":"conta","titulo":str,"valor":number,"vencimento":"YYYY-MM-DD"}
 - "gasto": um gasto que o usuário já fez — {"tipo":"gasto","descricao":str,"valor":number,"categoria":str ou null (ex: "mercado","transporte","lazer","contas","outros")}
 - "limite_financeiro": quando o usuário definir ou mudar um limite/orçamento mensal de gastos — {"tipo":"limite_financeiro","valor":number}
-- "painel": quando o usuário pedir um resumo/desempenho/status geral (ex: "mostra meu desempenho", "como eu tô indo", "resumo", "quanto eu tenho") — {"tipo":"painel"}
+- "painel": quando o usuário pedir um resumo/desempenho/status GERAL, cobrindo várias áreas de uma vez (ex: "mostra meu desempenho", "como eu tô indo", "resumo geral") — {"tipo":"painel"}
+- "listar_tarefas": quando o usuário perguntar especificamente sobre tarefas/coisas a fazer (ex: "tenho algo pra fazer?", "quais minhas tarefas?", "o que falta fazer?") — {"tipo":"listar_tarefas"}
+- "listar_lembretes": quando o usuário perguntar especificamente sobre lembretes (ex: "o que tenho de lembrete", "tem algum lembrete marcado?") — {"tipo":"listar_lembretes"}
+- "listar_metas": quando o usuário perguntar especificamente sobre metas (ex: "quais minhas metas?", "como tão minhas metas?") — {"tipo":"listar_metas"}
+- "listar_contas": quando o usuário perguntar especificamente sobre contas a pagar (ex: "tenho conta pra pagar?", "o que vence esse mês?") — {"tipo":"listar_contas"}
+- "listar_habitos": quando o usuário perguntar especificamente sobre hábitos recorrentes (ex: "quais hábitos eu tenho marcado?") — {"tipo":"listar_habitos"}
 - "excluir": quando o usuário pedir pra apagar/cancelar/remover algo (tarefa, conta, lembrete, meta ou hábito recorrente) — {"tipo":"excluir","categoria":"tarefa"|"conta"|"lembrete"|"meta"|"lembrete_recorrente"|null (null se não der pra saber qual tipo),"termo":str (palavra-chave pra buscar, ex: o nome/assunto)}. NÃO apague nada você mesmo — só gere essa ação, o sistema cuida de perguntar qual item e confirmar antes de excluir.
 - "pergunta": quando faltar informação para decidir (ex: não sabe se vira tarefa ou lembrete, ou falta prazo/horário, ou falta dias/horário de um hábito recorrente) —
   {"tipo":"pergunta","pergunta":str,"contexto":{...guarde aqui o que você já entendeu da mensagem, para completar quando o usuário responder...}}
@@ -40,6 +45,7 @@ Regras:
 - Se o "contexto pendente" tiver "tipo_pendente":"checkin_habito", a resposta do usuário SEMPRE vira a ação "checkin_habito", nunca uma "resposta" solta.
 - Se o usuário criar uma meta ou tarefa que pareça um HÁBITO RECORRENTE (ex: "todos os dias", "toda semana", "de segunda a sexta", algo repetitivo), gere a ação "meta" normalmente E TAMBÉM uma "pergunta" perguntando em quais dias da semana e horário ele quer ser lembrado de cumprir esse hábito, guardando o título no contexto. Quando ele responder com dias/horário, gere a ação "lembrete_recorrente" (não repita a "meta" de novo).
 - Nunca invente prazo, horário, dias ou valores que o usuário não deu — se não der pra saber, pergunte.
+- Pergunta sobre UMA categoria específica (tarefas, lembretes, metas, contas ou hábitos) usa o "listar_*" correspondente — NUNCA "painel" nesses casos. "painel" é só para pedido de visão GERAL cobrindo várias áreas ao mesmo tempo.
 - "conta" é sempre algo com valor E data de vencimento (ex: "conta de luz vence dia 15, R$120"); "gasto" é algo que já aconteceu (ex: "gastei 50 no mercado"), sem vencimento.
 - Responda só o JSON, nada de texto fora dele.
 """

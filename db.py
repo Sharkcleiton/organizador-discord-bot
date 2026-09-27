@@ -207,6 +207,60 @@ def contas_pendentes_resumo() -> tuple[int, float]:
     return len(resposta.data), total
 
 
+def listar_tarefas_pendentes() -> list[dict]:
+    resposta = (
+        _client.table("tarefas")
+        .select("titulo,prazo")
+        .eq("status", "pendente")
+        .order("prazo", desc=False, nullsfirst=False)
+        .execute()
+    )
+    return resposta.data
+
+
+def listar_lembretes_pendentes() -> list[dict]:
+    resposta = (
+        _client.table("lembretes")
+        .select("titulo,disparar_em")
+        .eq("enviado", False)
+        .order("disparar_em")
+        .execute()
+    )
+    return resposta.data
+
+
+def listar_metas_ativas() -> list[dict]:
+    resposta = (
+        _client.table("metas")
+        .select("titulo,tipo,prazo")
+        .eq("status", "ativa")
+        .order("prazo", desc=False, nullsfirst=False)
+        .execute()
+    )
+    return resposta.data
+
+
+def listar_contas_pendentes() -> list[dict]:
+    resposta = (
+        _client.table("contas")
+        .select("titulo,valor,vencimento")
+        .eq("pago", False)
+        .order("vencimento")
+        .execute()
+    )
+    return resposta.data
+
+
+def listar_habitos_ativos() -> list[dict]:
+    resposta = (
+        _client.table("lembretes_recorrentes")
+        .select("titulo,dias_semana,horario")
+        .eq("ativo", True)
+        .execute()
+    )
+    return resposta.data
+
+
 TABELA_POR_CATEGORIA = {
     "tarefa": "tarefas",
     "conta": "contas",

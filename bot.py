@@ -40,6 +40,11 @@ from db import (
     contas_pendentes_resumo,
     buscar_por_titulo,
     excluir_por_id,
+    listar_tarefas_pendentes,
+    listar_lembretes_pendentes,
+    listar_metas_ativas,
+    listar_contas_pendentes,
+    listar_habitos_ativos,
 )
 import calendar
 
@@ -111,6 +116,10 @@ def canal(guild: discord.Guild, nome: str) -> discord.TextChannel | None:
 
 def reais(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def parse_ts(valor: str) -> datetime:
+    return datetime.fromisoformat(valor.replace("Z", "+00:00"))
 
 
 def deve_dizer_chefe(channel_id: int) -> bool:
@@ -238,6 +247,65 @@ async def on_message(message: discord.Message):
                 await message.channel.send(f"\U0001F4CA Beleza{saud}! Painel atualizado em #{CANAL_GERAL}")
             else:
                 await message.channel.send(embed=embed)
+
+        elif tipo == "listar_tarefas":
+            itens = listar_tarefas_pendentes()
+            if not itens:
+                await message.channel.send(f"\U0001F4CC Nenhuma tarefa pendente{saud}!")
+            else:
+                linhas = []
+                for item in itens:
+                    linha = f"• {item['titulo']}"
+                    if item.get("prazo"):
+                        linha += f" — prazo {parse_ts(item['prazo']).astimezone(FUSO).strftime('%d/%m')}"
+                    linhas.append(linha)
+                await message.channel.send(f"\U0001F4CC Suas tarefas pendentes{saud}:\n" + "\n".join(linhas))
+
+        elif tipo == "listar_lembretes":
+            itens = listar_lembretes_pendentes()
+            if not itens:
+                await message.channel.send(f"⏰ Nenhum lembrete pendente{saud}!")
+            else:
+                linhas = [
+                    f"• {item['titulo']} — {parse_ts(item['disparar_em']).astimezone(FUSO).strftime('%d/%m às %H:%M')}"
+                    for item in itens
+                ]
+                await message.channel.send(f"⏰ Seus lembretes pendentes{saud}:\n" + "\n".join(linhas))
+
+        elif tipo == "listar_metas":
+            itens = listar_metas_ativas()
+            if not itens:
+                await message.channel.send(f"\U0001F3AF Nenhuma meta ativa{saud}!")
+            else:
+                linhas = []
+                for item in itens:
+                    linha = f"• {item['titulo']} ({item['tipo']})"
+                    if item.get("prazo"):
+                        linha += f" — prazo {datetime.fromisoformat(item['prazo']).strftime('%d/%m')}"
+                    linhas.append(linha)
+                await message.channel.send(f"\U0001F3AF Suas metas ativas{saud}:\n" + "\n".join(linhas))
+
+        elif tipo == "listar_contas":
+            itens = listar_contas_pendentes()
+            if not itens:
+                await message.channel.send(f"\U0001F4B0 Nenhuma conta pendente{saud}!")
+            else:
+                linhas = [
+                    f"• {item['titulo']} — {reais(float(item['valor']))} — vence {datetime.fromisoformat(item['vencimento']).strftime('%d/%m')}"
+                    for item in itens
+                ]
+                await message.channel.send(f"\U0001F4B0 Suas contas pendentes{saud}:\n" + "\n".join(linhas))
+
+        elif tipo == "listar_habitos":
+            itens = listar_habitos_ativos()
+            if not itens:
+                await message.channel.send(f"\U0001F501 Nenhum hábito recorrente marcado{saud}!")
+            else:
+                linhas = []
+                for item in itens:
+                    dias_fmt = ", ".join(DIAS_NOMES[d] for d in sorted(item["dias_semana"]))
+                    linhas.append(f"• {item['titulo']} — {dias_fmt} às {item['horario'][:5]}")
+                await message.channel.send(f"\U0001F501 Seus hábitos recorrentes{saud}:\n" + "\n".join(linhas))
 
         elif tipo == "excluir":
             categoria = acao.get("categoria")
