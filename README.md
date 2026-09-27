@@ -25,6 +25,7 @@ comandos fixos, é conversa normal no canal `#assistente`.
 - `assistente.py` — chama a API do Gemini e transforma a mensagem do usuário em ações estruturadas (JSON).
 - `db.py` — todo o acesso ao Supabase (tabelas: `tarefas`, `lembretes`, `lembretes_recorrentes`, `execucoes_habito`, `metas`, `contas`, `gastos`, `config_financeiro`).
 - `deploy/organizador-bot.service` — unit do systemd para rodar 24/7 na VM.
+- `.github/workflows/deploy.yml` — deploy automático na VM a cada push na `main`.
 
 ## Canais do Discord necessários
 
@@ -88,17 +89,46 @@ sudo systemctl status organizador-bot     # deve mostrar "active (running)"
 journalctl -u organizador-bot -f          # acompanhar logs em tempo real
 ```
 
-Para atualizar depois de um `git push`:
+## Deploy automático (a cada `git push`)
+
+Depois do setup inicial acima, um GitHub Action (`.github/workflows/deploy.yml`)
+conecta na VM via SSH e roda `git pull` + `pip install` + `systemctl restart`
+sozinho a cada push na branch `main`. Configuração única, na própria VM:
 
 ```bash
+# como o usuário organizador
 sudo su - organizador
-cd organizador-discord-bot
-git pull
-source venv/bin/activate
-pip install -r requirements.txt
+
+# 1. gerar uma chave SSH só pra isso (sem senha)
+ssh-keygen -t ed25519 -f ~/.ssh/deploy_key -N ""
+
+# 2. autorizar essa chave a logar como organizador nesta mesma VM
+cat ~/.ssh/deploy_key.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+# 3. mostrar a chave PRIVADA pra copiar (só vai pro GitHub, nunca pro chat/repo)
+cat ~/.ssh/deploy_key
 exit
-sudo systemctl restart organizador-bot
 ```
+
+```bash
+# 4. permitir reiniciar o serviço sem senha (fora do usuário organizador, como root/sudo)
+echo "organizador ALL=(root) NOPASSWD: $(which systemctl) restart organizador-bot" | sudo tee /etc/sudoers.d/organizador-deploy
+sudo visudo -c   # valida a sintaxe antes de sair
+```
+
+No GitHub, vá em **Settings → Secrets and variables → Actions** do repositório
+e crie 3 *repository secrets* (nunca cole isso aqui no chat):
+
+| Secret       | Valor                                              |
+|--------------|-----------------------------------------------------|
+| `VM_HOST`    | IP ou domínio da VM                                 |
+| `VM_USER`    | `organizador`                                       |
+| `VM_SSH_KEY` | conteúdo completo de `~/.ssh/deploy_key` (a privada) |
+
+A partir daí, todo `git push` na `main` já atualiza e reinicia o bot sozinho —
+acompanhe em **Actions** no GitHub se rodou certo. Se algo falhar, dá pra sempre
+cair de volta no método manual (`git pull` + `systemctl restart` direto na VM).
 
 ## Checklist antes de ligar em produção
 
